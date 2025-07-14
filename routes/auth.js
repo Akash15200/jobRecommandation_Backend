@@ -1,7 +1,5 @@
 const express = require('express');
 const router = express.Router();
-// const express = require('express');
-// const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
@@ -64,50 +62,76 @@ router.get('/user', protect, async (req, res) => {
 
 
 // User login
+// In your login route, modify the payload and response:
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
   try {
+    // 1. Find user
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: 'Invalid credentials' });
+    if (!user) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid credentials' 
+      });
+    }
 
+    // 2. Check password
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ msg: 'Invalid credentials' });
+    if (!isMatch) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid credentials' 
+      });
+    }
 
-    // Update last login time
+    // 3. Check if verified
+    if (!user.isVerified) {
+      return res.status(403).json({
+        success: false,
+        error: 'Please verify your email first'
+      });
+    }
+
+    // 4. Update last login
     user.lastLogin = new Date();
     await user.save();
 
-    // CORRECTED: Use consistent payload structure
+    // 5. Create token payload
     const payload = {
-      id: user.id, // Top-level ID field
-      role: user.role
+      user: {
+        id: user._id.toString(),  // Explicit conversion
+        role: user.role
+      }
     };
 
-    jwt.sign(
+    // 6. Generate token
+    const token = jwt.sign(
       payload,
       process.env.JWT_SECRET,
-      { expiresIn: '5d' },
-      (err, token) => {
-        if (err) throw err;
-
-        res.json({
-          token,
-          user: {
-            id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            skills: user.skills,
-            resumePath: user.resumePath,
-            lastLogin: user.lastLogin
-          }
-        });
-      }
+      { expiresIn: '5d' }
     );
+
+    // 7. Send response
+    res.json({
+      success: true,
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isVerified: user.isVerified,
+        // Include other necessary fields
+      }
+    });
+
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    console.error('Login error:', err);
+    res.status(500).json({ 
+      success: false,
+      error: 'Server error during login' 
+    });
   }
 });
 
@@ -153,7 +177,6 @@ router.post('/verify-otp', async (req, res) => {
     res.status(500).send('Server error');
   }
 });
-
 
 
 module.exports = router;
