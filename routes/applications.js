@@ -40,38 +40,38 @@ router.post('/', protect, async (req, res) => {
         const userId = req.user._id; // Get from auth middleware
 
         if (!jobId) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 success: false,
-                error: 'jobId is required' 
+                error: 'jobId is required'
             });
         }
 
         // Check for existing application
-        const existingApp = await Application.findOne({ 
-            user: userId, 
-            job: jobId 
+        const existingApp = await Application.findOne({
+            user: userId,
+            job: jobId
         });
-        
+
         if (existingApp) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 success: false,
-                error: 'You have already applied to this job' 
+                error: 'You have already applied to this job'
             });
         }
 
         const user = await User.findById(userId);
         if (!user.resumePath) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 success: false,
-                error: 'Please upload your resume before applying' 
+                error: 'Please upload your resume before applying'
             });
         }
 
         const job = await Job.findById(jobId);
         if (!job) {
-            return res.status(404).json({ 
+            return res.status(404).json({
                 success: false,
-                error: 'Job not found' 
+                error: 'Job not found'
             });
         }
 
@@ -85,15 +85,15 @@ router.post('/', protect, async (req, res) => {
 
         await application.save();
 
-        res.status(201).json({ 
+        res.status(201).json({
             success: true,
-            application 
+            application
         });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ 
+        res.status(500).json({
             success: false,
-            error: 'Server error while creating application' 
+            error: 'Server error while creating application'
         });
     }
 });
@@ -208,15 +208,20 @@ router.get('/:id', applicationController.getApplicationById);
 // ------------------------
 // PUT /api/applications/:appId/schedule-interview
 // ------------------------
+// PUT /api/applications/:appId/schedule-interview
 router.put('/:appId/schedule-interview', protect, async (req, res) => {
     try {
         const { interviewDate } = req.body;
         if (!interviewDate) return res.status(400).json({ msg: 'Interview date required' });
 
-        const app = await Application.findById(req.params.appId).populate('user').populate('job');
+        const app = await Application.findById(req.params.appId)
+            .populate('user', 'email name')
+            .populate('job', 'title');
+        
         if (!app) return res.status(404).json({ msg: 'Application not found' });
 
-        const interviewLink = `https://meet.google.com/${Math.random().toString(36).substring(2, 8)}`;
+        // Generate a simple interview link
+        const interviewLink = `https://meet.google.com/${Math.random().toString(36).substring(2, 10)}`;
 
         app.interviewDate = new Date(interviewDate);
         app.interviewLink = interviewLink;
@@ -231,14 +236,26 @@ router.put('/:appId/schedule-interview', protect, async (req, res) => {
                 app.interviewDate,
                 app.interviewLink
             );
+            
+            res.json({ 
+                msg: 'Interview scheduled and email sent', 
+                application: app 
+            });
         } catch (emailError) {
-            console.error('❌ Email error details:', emailError);
+            console.error('Email failed but interview was scheduled:', emailError);
+            res.status(200).json({ 
+                msg: 'Interview scheduled but email failed to send',
+                application: app,
+                warning: 'Email service issue'
+            });
         }
 
-        res.json({ msg: 'Interview scheduled and email sent', application: app });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ msg: 'Server error while scheduling interview', error: err.message });
+        console.error('Interview scheduling error:', err);
+        res.status(500).json({ 
+            msg: 'Server error while scheduling interview', 
+            error: err.message 
+        });
     }
 });
 
@@ -270,41 +287,41 @@ router.get('/:applicationId/download-resume', protect, async (req, res) => {
 
 
 router.get('/check', protect, async (req, res) => {
-  try {
-    const { jobId } = req.query;
-    const userId = req.user._id; // Get from auth middleware
+    try {
+        const { jobId } = req.query;
+        const userId = req.user._id; // Get from auth middleware
 
-    if (!jobId) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'jobId is required' 
-      });
+        if (!jobId) {
+            return res.status(400).json({
+                success: false,
+                error: 'jobId is required'
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(jobId)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid jobId'
+            });
+        }
+
+        const application = await Application.findOne({
+            user: userId,
+            job: jobId
+        }).populate('job', 'title companyName');
+
+        res.json({
+            success: true,
+            data: application || null
+        });
+    } catch (err) {
+        console.error('Check application error:', err);
+        res.status(500).json({
+            success: false,
+            error: 'Server error while checking application',
+            details: err.message
+        });
     }
-
-    if (!mongoose.Types.ObjectId.isValid(jobId)) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Invalid jobId' 
-      });
-    }
-
-    const application = await Application.findOne({ 
-      user: userId, 
-      job: jobId 
-    }).populate('job', 'title companyName');
-
-    res.json({ 
-      success: true,
-      data: application || null 
-    });
-  } catch (err) {
-    console.error('Check application error:', err);
-    res.status(500).json({ 
-      success: false,
-      error: 'Server error while checking application',
-      details: err.message 
-    });
-  }
 });
 
 

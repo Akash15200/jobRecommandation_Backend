@@ -1,78 +1,81 @@
 const nodemailer = require('nodemailer');
 
-// Use Ethereal.email for development testing (free fake SMTP)
-const isDevelopment = process.env.NODE_ENV !== 'production';
-const useEthereal = isDevelopment && !process.env.EMAIL_USER;
+// Create transporter with direct SMTP
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USERNAME,
+    pass: process.env.EMAIL_PASSWORD
+  }
+});
 
-let transporter;
+// Verify connection
+transporter.verify(function (error, success) {
+  if (error) {
+    console.error('Email connection verification failed:', error);
+  } else {
+    console.log('Server is ready to send emails');
+  }
+});
 
-if (useEthereal) {
-  // Create test account automatically
-  (async function() {
-    const testAccount = await nodemailer.createTestAccount();
-    transporter = nodemailer.createTransport({
-      host: 'smtp.ethereal.email',
-      port: 587,
-      secure: false,
-      auth: {
-        user: testAccount.user,
-        pass: testAccount.pass
-      }
-    });
-  })();
-} else {
-  // Use real SMTP configuration
-  transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.EMAIL_PORT) || 587,
-    secure: false,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    tls: {
-      rejectUnauthorized: false
-    }
-  });
-}
-
-async function sendInterviewEmail(to, name, jobTitle, interviewDate, interviewLink) {
+// Interview email function
+const sendInterviewEmail = async (toEmail, name, jobTitle, interviewDate, interviewLink) => {
   try {
     const mailOptions = {
-      from: `"CareerConnect" <${process.env.EMAIL_USER || 'noreply@careerconnect.com'}>`,
-      to,
+      from: `"Job Matcher" <${process.env.EMAIL_USERNAME}>`,
+      to: toEmail,
       subject: `Interview Scheduled for ${jobTitle}`,
       html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #2563eb;">Interview Scheduled</h2>
-          <p>Dear ${name},</p>
-          <p>Congratulations! You've been selected for an interview for the position:</p>
-          <p><strong>${jobTitle}</strong></p>
-          
-          <div style="background-color: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
-            <p><strong>Interview Date:</strong> ${new Date(interviewDate).toLocaleString()}</p>
-            <p><strong>Interview Link:</strong> <a href="${interviewLink}">${interviewLink}</a></p>
-          </div>
-          
-          <p>Please join the meeting 5 minutes before the scheduled time.</p>
-          <p>Best regards,<br>CareerConnect Recruitment Team</p>
-        </div>
-      `,
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #2563eb;">Interview Scheduled</h2>
+                    <p>Hello ${name},</p>
+                    <p>Your interview for <strong>${jobTitle}</strong> has been scheduled.</p>
+                    <p><strong>Date & Time:</strong> ${new Date(interviewDate).toLocaleString()}</p>
+                    <p><strong>Interview Link:</strong> <a href="${interviewLink}">${interviewLink}</a></p>
+                    <p>Please join 5 minutes before your scheduled time.</p>
+                    <p>Best regards,<br>The Hiring Team</p>
+                </div>
+            `,
     };
 
     const info = await transporter.sendMail(mailOptions);
-    
-    if (useEthereal) {
-      console.log('📨 Email sent to Ethereal:', nodemailer.getTestMessageUrl(info));
-    } else {
-      console.log(`✅ Email sent to ${to}: ${info.messageId}`);
-    }
-    
-    return true;
+    console.log('Email sent:', info.messageId);
+    return info;
   } catch (error) {
-    console.error('❌ Email sending failed:', error);
-    throw new Error('Failed to send email');
+    console.error('Email sending error:', error);
+    throw error;
   }
-}
+};
 
-module.exports = { sendInterviewEmail };
+const sendVerificationEmail = async (email, name, otp) => {
+  try {
+    const mailOptions = {
+      from: `"Your App" <${process.env.EMAIL_USERNAME}>`,
+      to: email,
+      subject: 'Verify Your Email Address',
+      html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #2563eb;">Email Verification</h2>
+                    <p>Hello ${name},</p>
+                    <p>Thank you for registering. Please use the following OTP to verify your email address:</p>
+                    <div style="background: #f4f4f4; padding: 10px; margin: 20px 0; text-align: center; font-size: 24px; letter-spacing: 5px;">
+                        ${otp}
+                    </div>
+                    <p>This OTP is valid for 15 minutes.</p>
+                    <p>If you didn't request this, please ignore this email.</p>
+                    <p>Best regards,<br>Your App Team</p>
+                </div>
+            `,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Verification email sent:', info.messageId);
+    return info;
+  } catch (error) {
+    console.error('Error sending verification email:', error);
+    throw error;
+  }
+};
+
+// Add this to your exports
+module.exports = { sendInterviewEmail, sendVerificationEmail };

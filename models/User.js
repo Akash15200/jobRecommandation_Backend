@@ -14,6 +14,10 @@ const UserSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
   skills: [String],
   createdAt: { type: Date, default: Date.now },
   resumePath: {

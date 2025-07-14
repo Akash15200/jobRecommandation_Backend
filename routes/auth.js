@@ -1,10 +1,14 @@
 const express = require('express');
 const router = express.Router();
+// const express = require('express');
+// const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { sendVerificationEmail } = require('../utils/email');
+const crypto = require('crypto');
 
-
+const otpStore = new Map();
 // User registration
 router.post('/register', async (req, res) => {
   const { name, email, password, role } = req.body;
@@ -22,18 +26,23 @@ router.post('/register', async (req, res) => {
     let user = await User.findOne({ email });
     if (user) return res.status(400).json({ msg: 'User already exists' });
 
-    user = new User({ name, email, password, role });
+    // Generate OTP
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const otpExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes expiry
 
-    const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(password, salt);
+    // Store OTP temporarily
+    otpStore.set(email, { otp, otpExpiry });
 
-    await user.save();
+    // Send verification email
+    await sendVerificationEmail(email, name, otp);
 
-    const payload = { user: { id: user.id } };
-    jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '5d' }, (err, token) => {
-      if (err) throw err;
-      res.json({ token });
+    // Respond without creating user yet
+    res.json({ 
+      msg: 'Verification OTP sent to your email', 
+      email,
+      nextStep: 'verify-otp'
     });
+
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');
@@ -96,6 +105,49 @@ router.post('/login', async (req, res) => {
         });
       }
     );
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+});
+
+// Verify OTP and complete registration
+router.post('/verify-otp', async (req, res) => {
+  const { email, otp, name, password, role } = req.body;
+
+  try {
+    const storedOtpData = otpStore.get(email);
+    
+    if (!storedOtpData) {
+      return res.status(400).json({ msg: 'OTP expired or invalid' });
+    }
+
+    const { otp: storedOtp, otpExpiry } = storedOtpData;
+
+    if (new Date() > otpExpiry) {
+      otpStore.delete(email);
+      return res.status(400).json({ msg: 'OTP expired' });
+    }
+
+    if (otp !== storedOtp) {
+      return res.status(400).json({ msg: 'Invalid OTP' });
+    }
+
+    // OTP verified, create user
+    const user = new User({ name, email, password, role, isVerified: true });
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
+
+    await user.save();
+    otpStore.delete(email); // Clean up
+
+    const payload = { user: { id: user.id } };
+    jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '5d' }, (err, token) => {
+      if (err) throw err;
+      res.json({ token });
+    });
+
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');
