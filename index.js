@@ -6,12 +6,13 @@ const fs = require('fs');
 const path = require('path');
 const { protect } = require('./middleware/authMiddleware');
 dotenv.config();
+// require('dotenv').config();
 
 const app = express();
 
 // Middlewares
 app.use(cors({
-    origin: 'job-recommendation-frontend-phi.vercel.app',
+    origin: process.env.FRONTEND_URL,
     credentials: true
 }));
 app.use(express.json());
