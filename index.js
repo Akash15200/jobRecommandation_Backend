@@ -11,7 +11,7 @@ const app = express();
 
 // Middlewares
 app.use(cors({
-    origin: 'http://localhost:3000',
+    origin: 'job-recommendation-frontend-phi.vercel.app',
     credentials: true
 }));
 app.use(express.json());
