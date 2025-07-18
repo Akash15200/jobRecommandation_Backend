@@ -62,7 +62,7 @@ router.post('/', protect, async (req, res) => {
         const newJob = new Job({
             title,
             description,
-            requiredSkills,
+            requiredSkills: requiredSkills.map(skill => skill.toLowerCase().trim()),
             recruiter: req.user._id,
             location,
             salary,

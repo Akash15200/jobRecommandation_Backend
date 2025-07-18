@@ -11,6 +11,7 @@ const fs = require('fs');
 const upload = require('../middleware/uploadMiddleware');
 const mongoose = require('mongoose');
 
+
 // ------------------------
 // POST /api/applications/calculate-fit
 // ------------------------
@@ -170,7 +171,40 @@ router.get('/user/:id', async (req, res) => {
 // ------------------------
 // GET /api/applications/:id
 // ------------------------
-router.get('/:id', applicationController.getApplicationById);
+router.get('/:id', async (req, res) => {
+    try {
+        // Validate the ID
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid application ID format'
+            });
+        }
+
+        const application = await Application.findById(req.params.id)
+            .populate('job')
+            .populate('student');
+
+        if (!application) {
+            return res.status(404).json({
+                success: false,
+                error: 'Application not found'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: application
+        });
+
+    } catch (err) {
+        console.error('Error fetching application:', err);
+        res.status(500).json({
+            success: false,
+            error: 'Server error'
+        });
+    }
+});
 // In your jobs router (backend)
 // router.get('/:id', async (req, res) => {
 //   try {
@@ -217,7 +251,7 @@ router.put('/:appId/schedule-interview', protect, async (req, res) => {
         const app = await Application.findById(req.params.appId)
             .populate('user', 'email name')
             .populate('job', 'title');
-        
+
         if (!app) return res.status(404).json({ msg: 'Application not found' });
 
         // Generate a simple interview link
@@ -236,14 +270,14 @@ router.put('/:appId/schedule-interview', protect, async (req, res) => {
                 app.interviewDate,
                 app.interviewLink
             );
-            
-            res.json({ 
-                msg: 'Interview scheduled and email sent', 
-                application: app 
+
+            res.json({
+                msg: 'Interview scheduled and email sent',
+                application: app
             });
         } catch (emailError) {
             console.error('Email failed but interview was scheduled:', emailError);
-            res.status(200).json({ 
+            res.status(200).json({
                 msg: 'Interview scheduled but email failed to send',
                 application: app,
                 warning: 'Email service issue'
@@ -252,9 +286,9 @@ router.put('/:appId/schedule-interview', protect, async (req, res) => {
 
     } catch (err) {
         console.error('Interview scheduling error:', err);
-        res.status(500).json({ 
-            msg: 'Server error while scheduling interview', 
-            error: err.message 
+        res.status(500).json({
+            msg: 'Server error while scheduling interview',
+            error: err.message
         });
     }
 });
@@ -285,10 +319,26 @@ router.get('/:applicationId/download-resume', protect, async (req, res) => {
     }
 });
 
+router.get('/mine', async (req, res) => {
+    try {
+        // const app=await Application.find(_id=req.body._id);
+        const applications = await Application.find({ user: req.user._id })
+            .populate('job')
+            .populate('job.recruiter');
+        console.log("mine called");
+
+    } catch (err) {
+        console.error('Mine application error:', err);
+        res.status(500).json({ msg: 'Server error', error: err.message });
+    }
+})
+
 
 router.get('/check', protect, async (req, res) => {
+    
     try {
         const { jobId } = req.query;
+        console.log("jobId ",jobId);
         const userId = req.user._id; // Get from auth middleware
 
         if (!jobId) {

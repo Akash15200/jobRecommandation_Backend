@@ -128,9 +128,102 @@ router.delete('/jobs/:id', protect, adminOnly, async (req, res) => {
 
 const Application = require('../models/Application');
 
+router.get('/analyticsCard', protect, async (req, res) => {
+    try {
+        const r = req.query.range; // "week", "month", "year"
+        console.log("Range filter:", r);
+
+        const now = new Date();
+        let startDate;
+
+        if (r === "week") {
+            startDate = new Date();
+            startDate.setDate(now.getDate() - 7);
+        } else if (r === "month") {
+            startDate = new Date();
+            startDate.setMonth(now.getMonth() - 1);
+        } else if (r === "year") {
+            startDate = new Date();
+            startDate.setFullYear(now.getFullYear() - 1);
+        } else {
+            startDate = new Date(0); // all time
+        }
+
+        // Metrics
+        const [totalUsers, activeJobs, totalApplications, totalCourses, studentCount, recruiterCount, adminCount] = await Promise.all([
+            User.countDocuments(),
+            Job.countDocuments(),
+            Application.countDocuments(),
+            Course.countDocuments(),
+            User.countDocuments({ role: 'student' }),
+            User.countDocuments({ role: 'recruiter' }),
+            User.countDocuments({ role: 'admin' })
+        ]);
+
+        // User activity analytics: Count logins per day of week within the date range
+        const userActivityRaw = await User.aggregate([
+            { $unwind: "$lastLogin" },
+            {
+                $match: {
+                    lastLogin: { $gte: startDate, $lte: now }
+                }
+            },
+            {
+                $group: {
+                    _id: { $dayOfWeek: "$lastLogin" },
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        // Map MongoDB's day numbers to readable days:
+        const dayMap = {
+            1: "Sun",
+            2: "Mon",
+            3: "Tue",
+            4: "Wed",
+            5: "Thu",
+            6: "Fri",
+            7: "Sat"
+        };
+
+        // Prepare frontend-friendly data:
+        const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        const userActivity = days.map(day => ({
+            name: day,
+            active: 0
+        }));
+
+        userActivityRaw.forEach(item => {
+            const dayName = dayMap[item._id];
+            const dayIndex = userActivity.findIndex(d => d.name === dayName);
+            if (dayIndex !== -1) {
+                userActivity[dayIndex].active = item.count;
+            }
+        });
+
+        res.json({
+            totalUsers,
+            activeJobs,
+            totalApplications,
+            totalCourses,
+            studentCount,
+            recruiterCount,
+            adminCount,
+            userActivity // ✅ for your BarChart
+        });
+    } catch (err) {
+        console.error("❌ Error fetching recruiter analytics:", err);
+        res.status(500).json({ msg: "Server error" });
+    }
+});
+
+
+
 // ✅ Analytics: total jobs, total applications, applications per job
 router.get('/analytics', protect, async (req, res) => {
     try {
+
         const jobs = await Job.find({ recruiter: req.user._id });
         const applicationsPerJob = await Promise.all(jobs.map(async (job) => {
             const count = await Applicant.countDocuments({ job: job._id });
@@ -164,22 +257,25 @@ router.get('/users/:userId/analytics', protect, adminOnly, async (req, res) => {
         }
 
         const userRole = user.role.toLowerCase();
-        
+        const lastLogin=user.lastLogin;
+
         // Base analytics for all users
         const baseAnalytics = {
             userId: user._id,
             name: user.name,
             email: user.email,
             role: user.role,
-            lastActive: user.lastLogin || user.updatedAt,
+            lastActive : lastLogin.length > 0
+                ? lastLogin[lastLogin.length - 1]
+                : user.updatedAt,
             createdAt: user.createdAt,
             skills: user.skills || [],
-            profileCompleted: calculateProfileCompletion(user) // Add this helper function
+            profileCompleted: calculateProfileCompletion(user) 
         };
 
         // Role-specific analytics
         let roleAnalytics = {};
-        
+
         if (userRole === 'student') {
             const [coursesEnrolled, jobsApplied, jobsRejected, jobsInterviewed] = await Promise.all([
                 Course.countDocuments({ students: userId }),
@@ -197,7 +293,7 @@ router.get('/users/:userId/analytics', protect, adminOnly, async (req, res) => {
                 rejectionRate: jobsApplied > 0 ? Math.round((jobsRejected / jobsApplied) * 100) : 0,
                 interviewRate: jobsApplied > 0 ? Math.round((jobsInterviewed / jobsApplied) * 100) : 0
             };
-        } 
+        }
         else if (userRole === 'recruiter') {
             const recruiterId = new mongoose.Types.ObjectId(userId);
             const jobs = await Job.find({ recruiter: recruiterId }).select('_id');
@@ -219,10 +315,10 @@ router.get('/users/:userId/analytics', protect, adminOnly, async (req, res) => {
                 rejectionRate: applicationsReceived > 0 ? Math.round((rejectedApplications / applicationsReceived) * 100) : 0,
                 interviewRate: applicationsReceived > 0 ? Math.round((interviewsScheduled / applicationsReceived) * 100) : 0
             };
-        } 
+        }
         else if (userRole === 'admin') {
             const adminId = new mongoose.Types.ObjectId(userId);
-            
+
             // Admin-specific metrics
             const [actionsTaken, usersManaged, recentActions] = await Promise.all([
                 AdminLog.countDocuments({ admin: adminId }),
@@ -243,7 +339,7 @@ router.get('/users/:userId/analytics', protect, adminOnly, async (req, res) => {
                 actionsTaken,
                 usersManaged,
                 recentActions,
-                
+
                 // Platform-wide metrics
                 platformMetrics
             };
@@ -252,15 +348,15 @@ router.get('/users/:userId/analytics', protect, adminOnly, async (req, res) => {
         }
 
         // Add last 5 activities for all roles
-        const recentActivities = await AdminLog.find({ 
+        const recentActivities = await AdminLog.find({
             $or: [
                 { admin: userId },
                 { 'metadata.userId': userId }
             ]
         })
-        .sort({ createdAt: -1 })
-        .limit(5)
-        .lean();
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .lean();
 
         const response = {
             ...roleAnalytics,
@@ -320,13 +416,13 @@ async function getPlatformMetrics() {
 function calculateProfileCompletion(user) {
     let completedFields = 0;
     const totalFields = 5; // Adjust based on your important fields
-    
+
     if (user.name) completedFields++;
     if (user.skills?.length > 0) completedFields++;
     if (user.resumePath) completedFields++;
     if (user.profilePicture) completedFields++;
     if (user.bio) completedFields++;
-    
+
     return Math.round((completedFields / totalFields) * 100);
 }
 
@@ -453,24 +549,24 @@ router.get('/jobs/:jobId/details', protect, adminOnly, async (req, res) => {
 
 
 router.get('/admin/logs', protect, adminOnly, async (req, res) => {
-  try {
-    const { page = 1, limit = 20 } = req.query;
-    const logs = await AdminLog.find()
-      .populate('admin', 'name email')
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+    try {
+        const { page = 1, limit = 20 } = req.query;
+        const logs = await AdminLog.find()
+            .populate('admin', 'name email')
+            .sort({ createdAt: -1 })
+            .limit(limit * 1)
+            .skip((page - 1) * limit);
 
-    const count = await AdminLog.countDocuments();
-    
-    res.json({
-      logs,
-      totalPages: Math.ceil(count / limit),
-      currentPage: page
-    });
-  } catch (err) {
-    res.status(500).json({ msg: 'Server error' });
-  }
+        const count = await AdminLog.countDocuments();
+
+        res.json({
+            logs,
+            totalPages: Math.ceil(count / limit),
+            currentPage: page
+        });
+    } catch (err) {
+        res.status(500).json({ msg: 'Server error' });
+    }
 });
 
 module.exports = router;

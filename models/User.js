@@ -9,10 +9,10 @@ const UserSchema = new mongoose.Schema({
     enum: ['student', 'recruiter', 'admin'],
     default: 'student'
   },
-  
+
   lastLogin: {
-    type: Date,
-    default: null
+    type: [Date],  // ✅ Array of Date objects
+    default: []    // ✅ Starts as an empty array
   },
   isVerified: {
     type: Boolean,

@@ -35,8 +35,8 @@ router.post('/register', async (req, res) => {
     await sendVerificationEmail(email, name, otp);
 
     // Respond without creating user yet
-    res.json({ 
-      msg: 'Verification OTP sent to your email', 
+    res.json({
+      msg: 'Verification OTP sent to your email',
       email,
       nextStep: 'verify-otp'
     });
@@ -70,18 +70,18 @@ router.post('/login', async (req, res) => {
     // 1. Find user
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'Invalid credentials' 
+        error: 'Invalid credentials'
       });
     }
 
     // 2. Check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'Invalid credentials' 
+        error: 'Invalid credentials'
       });
     }
 
@@ -94,9 +94,8 @@ router.post('/login', async (req, res) => {
     }
 
     // 4. Update last login
-    user.lastLogin = new Date();
+    user.lastLogin.push([new Date()]);
     await user.save();
-
     // 5. Create token payload
     const payload = {
       user: {
@@ -128,9 +127,9 @@ router.post('/login', async (req, res) => {
 
   } catch (err) {
     console.error('Login error:', err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Server error during login' 
+      error: 'Server error during login'
     });
   }
 });
@@ -141,7 +140,7 @@ router.post('/verify-otp', async (req, res) => {
 
   try {
     const storedOtpData = otpStore.get(email);
-    
+
     if (!storedOtpData) {
       return res.status(400).json({ msg: 'OTP expired or invalid' });
     }
