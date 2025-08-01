@@ -1,14 +1,8 @@
-// backend/routes/jobs.js
-
-const express = require('express');
-const router = express.Router();
 const Job = require('../models/Job');
-const { protect,adminOnly } = require('../middleware/authMiddleware'); // add if using auth
+const Application = require('../models/Application');
 
-
-
-// GET /api/jobs - Get all jobs
-router.get('/', async (req, res) => {
+// Get all active jobs
+exports.getAllJobs = async (req, res) => {
     try {
         const jobs = await Job.find({ isActive: true }).sort({ postedDate: -1 });
         res.json(jobs);
@@ -16,10 +10,10 @@ router.get('/', async (req, res) => {
         console.error(err);
         res.status(500).json({ msg: 'Server error' });
     }
-});
+};
 
-const axios = require('axios');
-router.post('/', protect, async (req, res) => {
+// Create new job
+exports.createJob = async (req, res) => {
     try {
         const {
             title,
@@ -43,19 +37,8 @@ router.post('/', protect, async (req, res) => {
             return res.status(400).json({ msg: 'Company name and recruiter name are required.' });
         }
 
-
         if (req.user.role !== 'recruiter') {
             return res.status(403).json({ msg: 'Only recruiters can post jobs.' });
-        }
-
-        if (req.body.status === 'accepted') {
-            application.interviewDetails = req.body.interviewDetails;
-            application.interviewLink = req.body.interviewLink;
-        }
-
-        // Add notes for rejected applications
-        if (req.body.status === 'rejected') {
-            application.notes = req.body.notes;
         }
 
         // Create job with all fields
@@ -71,8 +54,6 @@ router.post('/', protect, async (req, res) => {
             remote,
             companyName,
             recruiterName,
-            
-            // isActive and postedDate have defaults in schema
         });
 
         const savedJob = await newJob.save();
@@ -81,24 +62,24 @@ router.post('/', protect, async (req, res) => {
         console.error('Post job error:', err);
         res.status(500).json({ msg: 'Server error while posting job.' });
     }
-});
+};
 
-router.get('/myjobs', protect, async (req, res) => {
+// Get recruiter's jobs
+exports.getMyJobs = async (req, res) => {
     try {
-        console.log('Request user:', req.user); // 🔍 check user id and role
         if (req.user.role !== 'recruiter') {
             return res.status(403).json({ msg: 'Only recruiters can view their jobs.' });
         }
         const jobs = await Job.find({ recruiter: req.user._id });
-        console.log('Jobs found:', jobs); // 🔍 check retrieved jobs
         res.json(jobs);
     } catch (err) {
         console.error(err);
         res.status(500).json({ msg: 'Server error' });
     }
-});
+};
 
-router.delete('/:id', protect, async (req, res) => {
+// Delete job
+exports.deleteJob = async (req, res) => {
     try {
         const job = await Job.findById(req.params.id);
 
@@ -110,23 +91,21 @@ router.delete('/:id', protect, async (req, res) => {
             return res.status(403).json({ msg: 'Not authorized to delete this job.' });
         }
 
-        // FIX: Replace deprecated remove() with deleteOne()
         await Job.deleteOne({ _id: req.params.id });
-
         res.json({ msg: 'Job removed' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ msg: 'Server error while deleting job.' });
     }
-});
+};
 
-router.get('/user/:id', async (req, res) => {
+// Get user applications
+exports.getUserApplications = async (req, res) => {
     try {
         const applications = await Application.find({ user: req.params.id })
             .populate('job')
-            .where('job').ne(null); // Exclude deleted jobs
+            .where('job').ne(null);
 
-        // Normalize status to lowercase
         const normalized = applications.map(app => ({
             ...app._doc,
             status: app.status.toLowerCase()
@@ -136,43 +115,43 @@ router.get('/user/:id', async (req, res) => {
     } catch (err) {
         res.status(500).json({ message: 'Server error', error: err.message });
     }
-});
+};
 
-router.get('/:id', async (req, res) => {
-  try {
-    const job = await Job.findById(req.params.id)
-      .select('-__v') // Exclude version key
-      .lean(); // Convert to plain JavaScript object
+// Get single job by ID
+exports.getJobById = async (req, res) => {
+    try {
+        const job = await Job.findById(req.params.id)
+            .select('-__v')
+            .lean();
 
-    if (!job) {
-      return res.status(404).json({ success: false, error: 'Job not found' });
+        if (!job) {
+            return res.status(404).json({ success: false, error: 'Job not found' });
+        }
+
+        const responseData = {
+            _id: job._id,
+            title: job.title,
+            description: job.description,
+            company: job.company || job.companyName,
+            location: job.location || job.jobLocation,
+            salary: job.salary || job.jobSalary,
+            type: job.type || job.jobType,
+            experience: job.experience || job.jobExperience,
+            remote: job.remote,
+            requiredSkills: job.requiredSkills,
+            postedDate: job.postedDate || job.createdAt,
+            recruiterName: job.recruiter?.name || job.recruiterName || 'Recruiter',
+        };
+
+        res.json({ success: true, data: responseData });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, error: 'Server error' });
     }
+};
 
-    // Ensure all fields are included
-    const responseData = {
-      _id: job._id,
-      title: job.title,
-      description: job.description,
-      company: job.company || job.companyName,
-      location: job.location || job.jobLocation,
-      salary: job.salary || job.jobSalary,
-      type: job.type || job.jobType,
-      experience: job.experience || job.jobExperience,
-      remote: job.remote,
-      requiredSkills: job.requiredSkills,
-      postedDate: job.postedDate || job.createdAt,
-      recruiterName: job.recruiter?.name || job.recruiterName || 'Recruiter',
-      // Include any other fields you need
-    };
-
-    res.json({ success: true, data: responseData });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: 'Server error' });
-  }
-});
-
-router.get('/recruiter/myjobs', protect, async (req, res) => {
+// Get recruiter's jobs (alternative endpoint)
+exports.getRecruiterJobs = async (req, res) => {
     try {
         if (req.user.role !== 'recruiter') {
             return res.status(403).json({ 
@@ -194,10 +173,10 @@ router.get('/recruiter/myjobs', protect, async (req, res) => {
             msg: 'Server error while fetching your jobs' 
         });
     }
-});
+};
 
-
-router.get('/search', async (req, res) => {
+// Search jobs
+exports.searchJobs = async (req, res) => {
     try {
         const { q, location, remote, type, experience, skills } = req.query;
         const query = { isActive: true };
@@ -245,6 +224,4 @@ router.get('/search', async (req, res) => {
             msg: 'Server error while searching jobs' 
         });
     }
-});
-
-module.exports = router;
+};

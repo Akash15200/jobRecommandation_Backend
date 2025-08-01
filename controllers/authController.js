@@ -1,14 +1,13 @@
-const express = require('express');
-const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const User = require('../models/User');
 const { sendVerificationEmail } = require('../utils/email');
-const crypto = require('crypto');
 
 const otpStore = new Map();
+
 // User registration
-router.post('/register', async (req, res) => {
+exports.register = async (req, res) => {
   const { name, email, password, role } = req.body;
 
   // Block any admin role assignment during registration
@@ -45,12 +44,10 @@ router.post('/register', async (req, res) => {
     console.error(err.message);
     res.status(500).send('Server error');
   }
-});
+};
 
-const { protect } = require('../middleware/authMiddleware');
-
-// GET /api/auth/user - Get current user
-router.get('/user', protect, async (req, res) => {
+// Get current user
+exports.getCurrentUser = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select('-password');
     res.json(user);
@@ -58,12 +55,10 @@ router.get('/user', protect, async (req, res) => {
     console.error(err);
     res.status(500).json({ msg: 'Server error' });
   }
-});
-
+};
 
 // User login
-// In your login route, modify the payload and response:
-router.post('/login', async (req, res) => {
+exports.login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
@@ -96,6 +91,7 @@ router.post('/login', async (req, res) => {
     // 4. Update last login
     user.lastLogin.push([new Date()]);
     await user.save();
+    
     // 5. Create token payload
     const payload = {
       user: {
@@ -132,10 +128,10 @@ router.post('/login', async (req, res) => {
       error: 'Server error during login'
     });
   }
-});
+};
 
 // Verify OTP and complete registration
-router.post('/verify-otp', async (req, res) => {
+exports.verifyOtp = async (req, res) => {
   const { email, otp, name, password, role } = req.body;
 
   try {
@@ -175,7 +171,4 @@ router.post('/verify-otp', async (req, res) => {
     console.error(err.message);
     res.status(500).send('Server error');
   }
-});
-
-
-module.exports = router;
+};

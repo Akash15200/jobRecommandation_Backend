@@ -11,8 +11,8 @@ const UserSchema = new mongoose.Schema({
   },
 
   lastLogin: {
-    type: [Date],  // ✅ Array of Date objects
-    default: []    // ✅ Starts as an empty array
+    type: [Date],  
+    default: []    
   },
   isVerified: {
     type: Boolean,
