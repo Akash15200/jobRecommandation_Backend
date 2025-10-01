@@ -22,7 +22,9 @@ const UserSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   resumePath: {
     type: String, // e.g., 'upload/resumes/filename.pdf'
-  }
+  },
+  resetPasswordToken: String,
+  resetPasswordExpire: Date
 });
 
 // userSchema.pre('save', function(next) {

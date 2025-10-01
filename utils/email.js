@@ -77,5 +77,27 @@ const sendVerificationEmail = async (email, name, otp) => {
   }
 };
 
+const sendPasswordResetEmail = async (options) => {
+    const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+            user: process.env.EMAIL_USERNAME,
+            pass: process.env.EMAIL_PASSWORD
+        }
+    });
+
+    const message = {
+        from: `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`,
+        to: options.email,
+        subject: options.subject,
+        text: options.message
+    };
+
+    const info = await transporter.sendMail(message);
+
+    console.log('Message sent: %s', info.messageId);
+}
+
+
 // Add this to your exports
-module.exports = { sendInterviewEmail, sendVerificationEmail };
+module.exports = { sendInterviewEmail, sendVerificationEmail, sendPasswordResetEmail };

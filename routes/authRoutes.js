@@ -15,4 +15,10 @@ router.post('/login', authController.login);
 // Verify OTP
 router.post('/verify-otp', authController.verifyOtp);
 
+// Forgot Password
+router.post('/forgot-password', authController.forgotPassword);
+
+// Reset Password
+router.put('/reset-password/:token', authController.resetPassword);
+
 module.exports = router;
